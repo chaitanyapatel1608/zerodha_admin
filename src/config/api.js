@@ -20,6 +20,39 @@ export function readCookie(name) {
   return "";
 }
 
+let inMemoryCsrf = "";
+
+export function setCsrfToken(token) {
+  if (token) {
+    inMemoryCsrf = token;
+    try {
+      if (typeof sessionStorage !== "undefined") sessionStorage.setItem("zerodha_csrf", token);
+    } catch (e) {}
+    try {
+      if (typeof localStorage !== "undefined") localStorage.setItem("zerodha_csrf", token);
+    } catch (e) {}
+  }
+}
+
+export function getCsrfToken() {
+  const cookieVal = readCookie("zerodha_csrf");
+  if (cookieVal) return cookieVal;
+  if (inMemoryCsrf) return inMemoryCsrf;
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      const s = sessionStorage.getItem("zerodha_csrf");
+      if (s) return s;
+    }
+  } catch (e) {}
+  try {
+    if (typeof localStorage !== "undefined") {
+      const l = localStorage.getItem("zerodha_csrf");
+      if (l) return l;
+    }
+  } catch (e) {}
+  return "";
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -28,10 +61,19 @@ export const api = axios.create({
 
 const MUTATING_METHODS = new Set(["post", "put", "patch", "delete"]);
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const method = String(config.method || "get").toLowerCase();
   if (MUTATING_METHODS.has(method)) {
-    const csrfToken = readCookie("zerodha_csrf");
+    let csrfToken = getCsrfToken();
+    if (!csrfToken && !config.skipCsrfFetch && typeof window !== "undefined") {
+      try {
+        const res = await api.get("/csrf-token", { skipCsrfFetch: true });
+        if (res?.data?.csrfToken) {
+          csrfToken = res.data.csrfToken;
+          setCsrfToken(csrfToken);
+        }
+      } catch (_) {}
+    }
     if (csrfToken) {
       config.headers = config.headers || {};
       config.headers["X-CSRF-Token"] = csrfToken;
