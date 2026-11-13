@@ -82,4 +82,30 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (
+      error.response?.status === 403 &&
+      typeof error.response?.data?.message === "string" &&
+      error.response.data.message.includes("CSRF") &&
+      !originalRequest?._csrfRetry
+    ) {
+      originalRequest._csrfRetry = true;
+      try {
+        const res = await api.get("/csrf-token", { skipCsrfFetch: true });
+        if (res?.data?.csrfToken) {
+          const freshToken = res.data.csrfToken;
+          setCsrfToken(freshToken);
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers["X-CSRF-Token"] = freshToken;
+          return api(originalRequest);
+        }
+      } catch (_) {}
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

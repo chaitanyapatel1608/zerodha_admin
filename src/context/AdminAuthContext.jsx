@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import api from "../config/api";
+import api, { setCsrfToken } from "../config/api";
 
 const AdminAuthContext = createContext(null);
 
@@ -13,6 +13,9 @@ export function AdminAuthProvider({ children }) {
       const { data } = await api.get("/admin/me");
       if (data?.success && data.admin) {
         setAdmin(data.admin);
+        if (data.csrfToken) {
+          setCsrfToken(data.csrfToken);
+        }
       } else {
         setAdmin(null);
       }
@@ -32,12 +35,18 @@ export function AdminAuthProvider({ children }) {
     if (!loginRes.data?.success) {
       throw new Error(loginRes.data?.message || "Invalid credentials");
     }
+    if (loginRes.data?.csrfToken) {
+      setCsrfToken(loginRes.data.csrfToken);
+    }
 
     try {
       const meRes = await api.get("/admin/me");
       if (!meRes.data?.success || !meRes.data?.admin) {
         await api.post("/logout").catch(() => {});
         throw new Error("Admin privileges required.");
+      }
+      if (meRes.data?.csrfToken) {
+        setCsrfToken(meRes.data.csrfToken);
       }
       setAdmin(meRes.data.admin);
       return meRes.data.admin;
